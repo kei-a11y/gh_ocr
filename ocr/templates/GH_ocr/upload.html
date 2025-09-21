@@ -1,0 +1,619 @@
+<!-- GH_ocr/templates/GH_ocr/upload.html -->
+{% extends 'GH_ocr/base.html' %}
+{% load static %}
+
+{% block title %}PDFアップロード - PDF→Excel変換サービス{% endblock %}
+
+{% block content %}
+<style>
+  .col-md-6-5 {
+    flex: 0 0 55.5%; /
+    max-width: 55.5%;
+  }
+</style>
+
+<!-- 寄付のお願いバナー -->
+<div class="row justify-content-center mb-2">
+    <div class="col-md-6-5" style="transform: scale(0.9);>
+        <div class="alert alert-warning border-warning shadow-sm" style="border-left: 5px solid #ff6b00;">
+        <div class="row align-items-center g-0">
+            <div class="col">
+                <p class="mb-1">フリーサーバーで運営しているため読取り機能が制限されています.</p>
+                <p class="mb-0">高機能サーバーへの移設のため、<strong>寄付をお願いしております</strong>.</p>
+            </div>
+            <div class="col-md-auto text-center">
+                <button type="button" class="btn btn-outline-warning btn-lg" id="showDonationBtn" 
+                    style="border-color: #ff6b00; color: #ff6b00;">
+                <i class="bi bi-heart-fill"></i> 寄付で応援する
+                </button>
+                    <div class="mt-0">
+                        <small class="text-muted">（ ⇑ PayPayで寄付）</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-file-earmark-pdf"></i> PDFファイル変換：●●●</h4>
+            </div>
+            <div class="card-body">
+                {% if conversion_complete %}
+                    <!-- 変換完了画面 -->
+                    <div class="success-section text-center">
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle"></i> 変換が完了しました！
+                        </div>
+                        
+                        <div class="mb-4">
+                            <i class="bi bi-download" style="font-size: 3rem; color: #28a745;"></i>
+                            <h5 class="mt-3">Excelファイル（ZIP形式）をダウンロード</h5>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
+                                {% if excel_filename %}
+                                <button id="downloadBtn" class="btn btn-success btn-lg w-100" 
+                                        data-url="{% url 'GH_ocr:download' excel_filename %}">
+                                    <i class="bi bi-download"></i> ZIPをダウンロード
+                                </button>
+                                {% else %}
+                                <div class="alert alert-warning">
+                                    ダウンロードファイルが見つかりません
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <a href="{% url 'GH_ocr:upload' %}" class="btn btn-primary btn-lg w-100">
+                                    <i class="bi bi-plus-circle"></i> 新しいファイル
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                {% elif processing %}
+                    <!-- 処理中表示 -->
+                    <div class="processing-section text-center">
+                        <div class="mb-4">
+                            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                                <span class="visually-hidden">変換中...</span>
+                            </div>
+                        </div>
+                        
+                        <h5 class="mb-3">変換処理中です...</h5>
+                        
+                        <div class="progress-info">
+                            <div class="alert alert-info">
+                                <div id="progressText">
+                                    <strong><span id="currentPage">0</span>件／<span id="totalPages">{{ total_pages|default:1 }}</span>件　処理中</strong>
+                                </div>
+                                <div id="statusMessage" class="mt-2 text-muted">
+                                    処理を開始しています...
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p class="text-muted">しばらくお待ちください</p>
+                        
+                        <!-- 完了後の自動リダイレクト表示用（非表示） -->
+                        <div id="completedSection" style="display: none;">
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle"></i> 変換が完了しました！
+                            </div>
+                            <p>ダウンロードページに移動します...</p>
+                        </div>
+                        
+                        <!-- エラー表示用（非表示） -->
+                        <div id="errorSection" style="display: none;">
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle"></i> <span id="errorMessage">エラーが発生しました</span>
+                            </div>
+                            <a href="{% url 'GH_ocr:upload' %}" class="btn btn-primary">
+                                <i class="bi bi-arrow-left"></i> 戻る
+                            </a>
+                        </div>
+                    </div>
+
+                {% else %}
+                    <!-- アップロード・変換フォーム -->
+                    <div class="upload-section">
+                        <div class="text-center mb-4">
+                            <div class="upload-icon">
+                                <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #6c757d;"></i>
+                            </div>
+                            <h5 class="mt-3">PDFを選択して変換</h5>
+                            <p class="text-muted">変換後エクセルのファイル名は {受給者証番号}_{○ページ目}.xlsx となります</p>
+                        </div>
+
+                        <!-- 通常のアップロード・変換フォーム -->
+                        <form method="post" enctype="multipart/form-data" id="uploadForm">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <div class="file-upload-wrapper">
+                                    <input type="file" class="form-control" id="id_pdf_file" name="pdf_file" accept=".pdf" required>
+                                    <label for="id_pdf_file" class="file-label">
+                                        <i class="bi bi-file-earmark-pdf"></i> PDFファイルを選択して変換開始
+                                    </label>
+                                </div>
+                                {% if form.pdf_file.errors %}
+                                    <div class="text-danger mt-2">
+                                        {% for error in form.pdf_file.errors %}
+                                            <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="d-grid" id="submitButtonArea">
+                                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" style="display: none;">
+                                    <i class="bi bi-arrow-repeat"></i> 変換実行
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- 手動操作用のボタン（JavaScriptが無効な場合のフォールバック） -->
+                        <noscript>
+                            <div class="alert alert-warning mt-3">
+                                <small>JavaScriptが無効です。ファイルを選択後、変換ボタンを押してください。</small>
+                            </div>
+                        </noscript>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 注意事項 -->
+        <div class="alert alert-warning mt-4">
+            <h6><i class="bi bi-exclamation-triangle"></i> 重要な注意事項</h6>
+            <ul class="mb-0">
+                <li>決まった様式でなければ正確に読み取りできません</li>
+                <li>ファイルサイズは10MB以下にしてください</li>
+                <li>処理には数分かかる場合があります</li>
+            </ul>
+        </div>
+
+        <div class="text-center mt-3">
+            <a href="{% url 'GH_ocr:format_info' %}" class="btn btn-outline-primary">
+                <i class="bi bi-info-circle"></i> 読み取るにはこちらの様式を使用する必要があります
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 寄付モーダル（PayPay画像のみ版） -->
+<div class="modal fade" id="donationModal" tabindex="-1" aria-labelledby="donationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="donationModalLabel">
+                    <i class="bi bi-heart"></i> サービス継続のご支援をお願いします
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center py-2">
+                <div id="donationContent">
+                    <p class="mb-2" id="donationMessage">
+                        このサービスの維持・改善にご協力ください
+                    </p>
+                    
+                    <div class="mb-2">
+                        <div id="paypayQRContainer" style="display: none;">
+                            <p class="mb-1 text-muted small">PayPayアプリでQRコードを読み取ってください</p>
+                            <img id="paypayQRImage" src="{% static 'paypay0930.png' %}" alt="PayPay QRコード" class="img-fluid" style="max-width: 250px; max-height: 250px;">
+                            <p class="mt-1 text-success"><strong>金額：300円</strong></p>
+                        </div>
+                    </div>
+                    
+                    <div class="text-muted small">
+                        <i class="bi bi-info-circle"></i> 
+                        寄付は任意です。お気持ちの範囲でお願いします。
+                    </div>
+                </div>
+                
+                <div id="noDonationContent" style="display: none;">
+                    <p class="text-muted">現在、寄付の受付を行っておりません。</p>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 今は寄付しない
+                </button>
+                <button type="button" class="btn btn-success" data-bs-dismiss="modal" id="thankYouBtn">
+                    <i class="bi bi-check-circle"></i> 応援してます
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 寄付モーダル表示関数（シンプル版）
+function showDonationModal(donationData, downloadUrl) {
+    const modal = new bootstrap.Modal(document.getElementById('donationModal'));
+    const messageElement = document.getElementById('donationMessage');
+    const donationContent = document.getElementById('donationContent');
+    const noDonationContent = document.getElementById('noDonationContent');
+    const paypayQRContainer = document.getElementById('paypayQRContainer');
+    const paypayQRImage = document.getElementById('paypayQRImage');
+
+    // 要素の存在チェック
+    if (!messageElement || !donationContent || !noDonationContent || 
+        !paypayQRContainer || !paypayQRImage) {
+        console.error('必要なDOM要素が見つかりません');
+        // エラーの場合、ダウンロードURLがあれば直接ダウンロード
+        if (downloadUrl) {
+            window.location.href = downloadUrl;
+        }
+        return;
+    }
+
+    if (donationData.has_donation) {
+        donationContent.style.display = 'block';
+        noDonationContent.style.display = 'none';
+        
+        // メッセージ設定
+        messageElement.textContent = donationData.message || 'このサービスの維持・改善にご協力ください';
+        
+        // PayPay画像を表示
+        // PayPay画像を表示
+        if (donationData.paypay_image_url) {
+            paypayQRImage.src = "{% static 'paypay0930.png' %}";
+            // renderでは一旦やめるpaypayQRImage.src = donationData.paypay_image_url;
+            paypayQRContainer.style.display = 'block';
+            console.log('PayPay画像を表示:', donationData.paypay_image_url);
+        } else {
+            // 画像がない場合は非表示
+            paypayQRContainer.style.display = 'none';
+            console.log('PayPay画像が設定されていません');
+        }
+    } else {
+        donationContent.style.display = 'none';
+        noDonationContent.style.display = 'block';
+    }
+    
+    // モーダル閉じた後のダウンロード処理
+    if (downloadUrl) {
+        const modalElement = document.getElementById('donationModal');
+        modalElement.addEventListener('hidden.bs.modal', function() {
+            window.location.href = downloadUrl;
+        }, { once: true });
+    }
+    
+    modal.show();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('id_pdf_file');
+    const form = document.getElementById('uploadForm');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const showDonationBtn = document.getElementById('showDonationBtn');
+
+    // 寄付ボタンのクリック処理
+    if (showDonationBtn) {
+        showDonationBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            fetch('{% url "GH_ocr:donation_info" %}')
+                .then(response => {
+                    console.log('API応答ステータス:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('取得したデータ:', data);
+                    if (data.has_donation) {
+                        showDonationModal(data, null);
+                    } else {
+                        alert('現在、寄付の受付を準備中です。しばらくお待ちください。');
+                    }
+                })
+                .catch(error => {
+                    console.error('寄付情報の取得に失敗:', error);
+                    alert('寄付情報の取得に失敗しました。ページを更新してもう一度お試しください。');
+                });
+        });
+    }
+
+    // ダウンロードボタンの処理
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const downloadUrl = this.dataset.url;
+            
+            fetch('{% url "GH_ocr:donation_info" %}')
+                .then(response => {
+                    console.log('API応答ステータス:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('取得したデータ:', data);
+                    if (data.has_donation) {
+                        showDonationModal(data, downloadUrl);
+                    } else {
+                        // 寄付設定がない場合は直接ダウンロード
+                        window.location.href = downloadUrl;
+                    }
+                })
+                .catch(error => {
+                    console.error('寄付情報の取得に失敗:', error);
+                    // エラー時も直接ダウンロード
+                    window.location.href = downloadUrl;
+                });
+        });
+    }
+
+    // 処理中の場合は進捗監視を開始
+    {% if processing and session_id %}
+    const sessionId = '{{ session_id }}';
+    console.log('処理中のセッションID:', sessionId);
+    startProgressMonitoring(sessionId);
+    {% endif %}
+
+    // ファイル選択時の処理
+    if (fileInput) {
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // ファイルサイズチェック (10MB = 10 * 1024 * 1024 bytes)
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('ファイルサイズは10MB以下にしてください。');
+                    fileInput.value = '';
+                    return;
+                }
+
+                // PDFファイルかチェック
+                if (file.type !== 'application/pdf') {
+                    alert('PDFファイルを選択してください。');
+                    fileInput.value = '';
+                    return;
+                }
+
+                // 確認ダイアログ
+                if (confirm(`「${file.name}」を変換しますか？\n処理には数分かかる場合があります。`)) {
+                    // フォーム送信
+                    form.submit();
+                } else {
+                    // キャンセルされた場合はファイル選択をリセット
+                    fileInput.value = '';
+                }
+            }
+        });
+    }
+
+    // フォーム送信前の処理
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            // ファイルが選択されていない場合の手動送信を防ぐ
+            if (!fileInput.files[0]) {
+                e.preventDefault();
+                alert('PDFファイルを選択してください。');
+            }
+        });
+    }
+});
+
+function startProgressMonitoring(sessionId) {
+    // 進捗監視の関数は既存のものをそのまま使用
+    const currentPageElement = document.getElementById('currentPage');
+    const totalPagesElement = document.getElementById('totalPages');
+    const statusMessageElement = document.getElementById('statusMessage');
+    const completedSection = document.getElementById('completedSection');
+    const errorSection = document.getElementById('errorSection');
+    const errorMessage = document.getElementById('errorMessage');
+
+    let retryCount = 0;
+    const maxRetries = 5;
+
+    function updateProgress() {
+        console.log(`進捗チェック中... セッションID: ${sessionId}`);
+        
+        fetch(`{% url 'GH_ocr:get_progress' session_id='dummy' %}`.replace('dummy', sessionId))
+            .then(response => {
+                console.log('API応答ステータス:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('進捗データ:', data);
+                retryCount = 0;
+
+                // 進捗更新
+                if (currentPageElement) currentPageElement.textContent = Math.floor(data.current) || 0;
+                if (totalPagesElement) totalPagesElement.textContent = Math.floor(data.total) || 1;
+                if (statusMessageElement) statusMessageElement.textContent = data.message || '';
+
+                if (data.status === 'completed') {
+                    console.log('処理完了！結果ファイル:', data.result_file);
+                    
+                    // 完了時の処理
+                    if (completedSection) {
+                        completedSection.style.display = 'block';
+                        document.querySelector('.progress-info').style.display = 'none';
+                        document.querySelector('.spinner-border').style.display = 'none';
+                    }
+                    
+                    // 2秒後に完了画面にリダイレクト
+                    setTimeout(() => {
+                        let redirectUrl = '{% url "GH_ocr:upload" %}?completed=true';
+                        if (data.result_file) {
+                            redirectUrl += '&file=' + encodeURIComponent(data.result_file);
+                        }
+                        console.log('リダイレクト先:', redirectUrl);
+                        window.location.href = redirectUrl;
+                    }, 2000);
+                    
+                } else if (data.status === 'error') {
+                    console.log('処理エラー:', data.message);
+                    
+                    // エラー時の処理
+                    if (errorSection && errorMessage) {
+                        errorMessage.textContent = data.message || 'エラーが発生しました';
+                        errorSection.style.display = 'block';
+                        document.querySelector('.progress-info').style.display = 'none';
+                        document.querySelector('.spinner-border').style.display = 'none';
+                    }
+                    
+                } else {
+                    // 処理中の場合は継続監視
+                    console.log('処理継続中...');
+                    setTimeout(updateProgress, 2000); // 2秒間隔で更新
+                }
+            })
+            .catch(error => {
+                console.error('進捗監視エラー:', error);
+                retryCount++;
+                
+                if (retryCount < maxRetries) {
+                    console.log(`リトライ ${retryCount}/${maxRetries}`);
+                    setTimeout(updateProgress, 5000); // エラー時は5秒後に再試行
+                } else {
+                    console.error('最大リトライ数に達しました');
+                    if (errorSection && errorMessage) {
+                        errorMessage.textContent = '通信エラーが発生しました。ページを更新してください。';
+                        errorSection.style.display = 'block';
+                        document.querySelector('.progress-info').style.display = 'none';
+                        document.querySelector('.spinner-border').style.display = 'none';
+                    }
+                }
+            });
+    }
+
+    // 初回実行
+    updateProgress();
+}
+</script>
+
+<style>
+.file-upload-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.file-upload-wrapper input[type=file] {
+    position: absolute;
+    left: -9999px;
+    opacity: 0;
+}
+
+.file-label {
+    display: block;
+    padding: 12px 24px;
+    cursor: pointer;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    text-align: center;
+    transition: all 0.3s ease;
+    background-color: #f8f9fa;
+}
+
+.file-label:hover {
+    border-color: #007bff;
+    background-color: #e3f2fd;
+}
+
+.file-upload-wrapper input[type=file]:focus + .file-label {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.processing-section {
+    padding: 2rem 0;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+.progress-info {
+    margin: 1rem 0;
+}
+
+.progress-info .alert {
+    margin-bottom: 0;
+}
+
+#progressText {
+    font-size: 1.1rem;
+}
+
+#statusMessage {
+    font-size: 0.9rem;
+}
+
+.success-section {
+    padding: 2rem 0;
+}
+
+/* 寄付バナー用のスタイル */
+.alert-warning {
+    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+    border-left: 5px solid #ff6b00 !important;
+}
+
+.btn-outline-warning:hover {
+    background-color: #ff6b00;
+    border-color: #ff6b00;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(255, 107, 0, 0.3);
+}
+
+.btn-outline-warning {
+    transition: all 0.3s ease;
+}
+
+/* 寄付モーダル用のスタイル */
+.modal-body {
+    padding: 2rem;
+}
+
+#donationModal .modal-header {
+    background: linear-gradient(135deg, #28a745, #20c997);
+}
+
+#paypayQRImage {
+    border: 3px solid #e9ecef;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+#paypayTextCode {
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-family: monospace;
+}
+
+.modal-footer {
+    border-top: none;
+    padding: 1rem 2rem 2rem 2rem;
+}
+
+.modal-footer .btn {
+    min-width: 120px;
+}
+
+/* PayPayカラーに合わせたボタンスタイル */
+.btn-success {
+    background-color: #ff6b00;
+    border-color: #ff6b00;
+}
+
+.btn-success:hover {
+    background-color: #e55a00;
+    border-color: #e55a00;
+}
+</style>
+{% endblock %}

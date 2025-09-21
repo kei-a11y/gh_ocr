@@ -1,0 +1,94 @@
+<!-- static/B_ocr/css/style.css -->
+<style>
+/* カスタムCSS */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+}
+
+.card-header {
+    border-radius: 10px 10px 0 0 !important;
+}
+
+.file-upload-wrapper {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    width: 100%;
+}
+
+.file-upload-wrapper input[type=file] {
+    position: absolute;
+    left: -9999px;
+}
+
+.file-label {
+    display: block;
+    padding: 12px 20px;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.file-label:hover {
+    border-color: #007bff;
+    background-color: #e7f3ff;
+    color: #007bff;
+}
+
+.file-label.file-selected {
+    border-color: #28a745;
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.upload-icon {
+    margin-bottom: 1rem;
+}
+
+.conversion-section, .success-section {
+    padding: 2rem 1rem;
+}
+
+.alerts-container {
+    margin-bottom: 1rem;
+}
+
+footer {
+    margin-top: auto;
+}
+
+.btn-lg {
+    padding: 12px 24px;
+    font-size: 1.1rem;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+    .container {
+        padding: 0 15px;
+    }
+    
+    .card-body {
+        padding: 1.5rem 1rem;
+    }
+    
+    .btn-lg {
+        font-size: 1rem;
+        padding: 10px 20px;
+    }
+}
