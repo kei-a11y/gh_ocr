@@ -413,19 +413,31 @@ def normalize_hhmm_digits(digits: str) -> str:
 
 # -----MODEL_CANDIDATES = ["best_model.h5", "mnist_model.h5"]の読み込み
 # -----main内で、model = load_model_if_exists()と宣言
+# 既存のこの部分を
+# こう変更する
 def load_model_if_exists():
     if not _have_tf:
         return None
-    for p in MODEL_CANDIDATES:
-        if Path(p).exists():
+
+    # 優先順位：改良版 → 既存ベスト → バックアップ
+    MODEL_PRIORITY = [
+        "best_model_enhanced.h5",  # 印刷体対応改良版
+        "best_model.h5",           # 既存ベストモデル  
+        #"mnist_model.h5"           # バックアップ
+    ]
+
+    for model_path in MODEL_PRIORITY:
+        if Path(model_path).exists():
             try:
-                print("Loading model:", p)
-                model = tf.keras.models.load_model(p)
-                print("Loaded model:", p)
+                print(f"Loading model: {model_path}")
+                model = tf.keras.models.load_model(model_path)
+                print(f"Successfully loaded: {model_path}")
                 return model
             except Exception as e:
-                print("Failed to load model", p, ":", e)
-    print("No model found among:", MODEL_CANDIDATES)
+                print(f"Failed to load {model_path}: {e}")
+                continue
+
+    print("No valid model found")
     return None
 
 
