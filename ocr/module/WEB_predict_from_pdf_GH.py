@@ -1,4 +1,4 @@
-import os, io, sys,re, cv2, pytesseract
+import os, io, sys,re, cv2#, pytesseract
 from pathlib import Path
 from PIL import Image, ImageOps, ImageEnhance
 import numpy as np
@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 from django.conf import settings
 
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+#pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # --- 外部ライブラリ読み込み（無ければ適宜メッセージ） ---
 try:
@@ -131,86 +131,42 @@ def split_rows_by_lines(img, debug_name=""):
 
 #---受給者証番号をOCR + fallbackで認識
 def predict_recipient_number(img, model, debug_name="recipient"):
-    import re, pytesseract
-
-    # --- Step 1: Tesseract OCR (数字限定) ---
-    config = "--psm 7 -c tessedit_char_whitelist=0123456789"
-    text = pytesseract.image_to_string(img, config=config).strip()
-    digits = re.sub(r"\D", "", text)  # 数字以外削除
-
-    # --- Step 2: Tesseractの結果が10桁なら即採用 ---
-    if len(digits) == 10:
-        return digits
-
-    # --- Step 3: fallback: 手書きモデル ---
+    """受給者証番号 → モデルのみで予測"""
     if model is not None:
         val = predict_digits_with_model(model, img, debug_name)
-        # → 桁数はとりあえず返す（Excelに痕跡を残す）
-        if val:
-            return val
-
-    # --- Step 4: どちらも失敗 ---
-    return digits  # もしTesseractが9桁とかならそのまま残す
+        return val or ""
+    return ""
 
 
 #---受給者名（カナ）をOCRで認識
 def predict_name(img, model=None, debug_name="name"):
-    # --- 余白をトリミング ---
-    w, h = img.size
-    margin_x = int(w * 0.1)   # 左右10%カット
-    margin_y = int(h * 0.05)   # 上下0.5%カット
-    cropped = img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
-
-    # --- リサイズ（拡大してOCR精度を上げる） ---
-    scale = 3
-    resized = cropped.resize((cropped.width * scale, cropped.height * scale), Image.Resampling.LANCZOS)
-
-    # --- コントラスト強調 + グレースケール + 二値化 ---
-    gray = resized.convert("L")
-    enhancer = ImageEnhance.Contrast(gray)
-    gray = enhancer.enhance(3.0)
-    bw = gray.point(lambda x: 0 if x < 160 else 255, '1')
-
-    if debug_name:
-        ensure_dir("mid")
-        bw.save(Path("mid") / f"{debug_name}_preprocessed.png")
-
-    # --- OCR (カタカナ限定, 複数文字に強いpsm=6) ---
-    config = "--psm 6"
-    try:
-        #--- lang="jpn"で日本語データを使うということ
-        text = pytesseract.image_to_string(bw, "jpn", config=config).strip()
-    except Exception as e:
-        print("Tesseract error (Name OCR):", e)
-        return ""
-
-    text = re.sub(r"[^ァ-ヴー]", "", text)
-
-    return text
+    """受給者名（カナ） → ここでは未対応（空文字に）"""
+    # Tesseractを使わないので、常に空白にしておく
+    return ""
 
 
 #---住居番号をOCR + fallbackで認識
 def predict_residence_number(img, model, debug_name="residence"):
-    import re, pytesseract
+#    import re, pytesseract
 
-    # --- Step 1: Tesseract OCR (数字限定) ---
-    config = "--psm 7 -c tessedit_char_whitelist=0123456789"
-    text = pytesseract.image_to_string(img, config=config).strip()
-    digits = re.sub(r"\D", "", text)  # 数字以外削除
+#    # --- Step 1: Tesseract OCR (数字限定) ---
+#    config = "--psm 7 -c tessedit_char_whitelist=0123456789"
+#    text = pytesseract.image_to_string(img, config=config).strip()
+#    digits = re.sub(r"\D", "", text)  # 数字以外削除
 
-    # --- Step 2: Tesseractの結果が10桁なら即採用 ---
-    if len(digits) == 1:
-        return digits
+#    # --- Step 2: Tesseractの結果が10桁なら即採用 ---
+#    if len(digits) == 1:
+#        return digits
 
     # --- Step 3: fallback: 手書きモデル ---
     if model is not None:
         val = predict_digits_with_model(model, img, debug_name)
         # → 桁数はとりあえず返す（Excelに痕跡を残す）
         if val:
-            return val
-
-    # --- Step 4: どちらも失敗 ---
-    return digits  # 
+            return val or ""
+        return ""
+#    # --- Step 4: どちらも失敗 ---
+#    return digits  # 
 
 
 
@@ -405,18 +361,18 @@ template_xlsx_path=os.path.join(settings.BASE_DIR, "static_files", \
         ws[f"AR{idx}"] = row.get("Jiritsu1", "")
         ws[f"AV{idx}"] = row.get("Jiritsu2", "")
 
-    # === ファイル名決定ロジック ===
+    # === 新しいファイル名ルール ===
     recipient = (recipient_digits or "").strip()
-    name = (name_digits or "").strip()
+    filename = f"{recipient}_{seq_no}ページ目.xlsx"
 
-    if recipient and name:
-        filename = f"{recipient}{name}.xlsx"
-    elif not recipient and name:
-        filename = f"{seq_no}受給者証番号入力なし{name}.xlsx"
-    elif recipient and not name:
-        filename = f"{recipient}.xlsx"
+    if os.path.isdir(output_base) or output_base.endswith(('/', '\\')):
+        output_path = os.path.join(output_base, filename)
     else:
-        filename = f"{seq_no}受給者証番号入力なし.xlsx"
+        output_path = filename
+
+    wb.save(output_path)
+    print("Excelに書き込みました ->", output_path)
+    return output_path
 
 # ★変更=== 
 #    output_path について、output_baseがディレクトリパスの場合はファイル名を結合、
@@ -806,30 +762,11 @@ def convert_service_value(raw_value):
 
 #--- 開始・終了時刻"以外"を OCR → fallback モデル の2段階で推定する
 def ocr_etc_with_fallback(pil_img, model=None, debug_name=""):
-
-    pil_img = remove_lines(pil_img, debug=False, debug_name=f"{debug_name}_for_ocr")
-
-    # --- Step1: OCR ---
-    text = ""
-    try:
-        text = pytesseract.image_to_string(
-            pil_img,
-            config="--psm 7 -c tessedit_char_whitelist=0123456789"
-        ).strip()
-    except Exception as e:
-        print("Tesseract error:", e)
-
-    # --- 数字だけ抽出 ---
-    digits = re.sub(r"\D", "", text)
-
-    # --- Step2: fallback ---
-    #--- Tesseractで1文字の数字が正確に認識できた場合→ その結果をそのまま返す
-    #--- 何も認識できなかった、2文字以上認識した、認識エラーだった場合はTensorFlowモデルにフォールバック
-    if len(digits) != 1:
-        if model is not None:
-            val = predict_digits_with_model(model, pil_img, debug_name=debug_name)
-            return val
-    return digits
+    """時刻以外の数字欄OCR → モデルのみ"""
+    if model is not None:
+        val = predict_digits_with_model(model, pil_img, debug_name=debug_name)
+        return val
+    return ""
 
 
 # ★変更=== viewsからpredict_from_pdf_B.pyを呼ぶための処理　mainをprocess_pdf_to_excelに変更
