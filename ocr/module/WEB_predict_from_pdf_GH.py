@@ -775,6 +775,9 @@ def convert_service_value(raw_value):
 #--- 開始・終了時刻"以外"を OCR → fallback モデル の2段階で推定する
 def ocr_etc_with_fallback(pil_img, model=None, debug_name=""):
     """時刻以外の数字欄OCR → モデルのみ"""
+
+    pil_img = remove_lines(pil_img, debug=False, debug_name=f"{debug_name}_for_ocr")
+    
     if model is not None:
         val = predict_digits_with_model(model, pil_img, debug_name=debug_name)
         return val
