@@ -411,6 +411,31 @@ def normalize_hhmm_digits(digits: str) -> str:
     return ""
 
 
+# -----モデル入力用に 28x28 -> (1,28,28,1) の numpy 配列にする
+def preprocess_for_model(pil_img, invert=True, debug_name="", seq_no=None):
+    img = pil_img.convert("L")
+    if invert:
+        img = ImageOps.invert(img)  # postproc の画像を黒白反転させる
+
+    # パディングして正方形化（余白に黒背景を追加）
+    w, h = img.size
+    side = max(w, h)
+    padded = Image.new("L", (side, side), 0)  # 黒背景
+    padded.paste(img, ((side - w) // 2, (side - h) // 2))
+
+    img = padded.resize((28, 28), Image.Resampling.LANCZOS)
+
+    # デバッグ保存
+    if debug_name is not None:
+        ensure_dir("debug_inputs")
+        suffix = f"_p{seq_no}" if seq_no is not None else ""
+        img.save(f"debug_inputs/{debug_name}{suffix}_.png")
+
+    arr = np.array(img).astype("float32") / 255.0
+    arr = arr.reshape(1, 28, 28, 1)
+    return arr
+
+
 # -----MODEL_CANDIDATES = ["best_model.h5", "mnist_model.h5"]の読み込み
 # -----main内で、model = load_model_if_exists()と宣言
 # 既存のこの部分を
@@ -418,26 +443,16 @@ def normalize_hhmm_digits(digits: str) -> str:
 def load_model_if_exists():
     if not _have_tf:
         return None
-
-    # 優先順位：改良版 → 既存ベスト → バックアップ
-    MODEL_PRIORITY = [
-        "best_model_enhanced.h5",  # 印刷体対応改良版
-        "best_model.h5",           # 既存ベストモデル  
-        #"mnist_model.h5"           # バックアップ
-    ]
-
-    for model_path in MODEL_PRIORITY:
-        if Path(model_path).exists():
+    for p in MODEL_CANDIDATES:
+        if Path(p).exists():
             try:
-                print(f"Loading model: {model_path}")
-                model = tf.keras.models.load_model(model_path)
-                print(f"Successfully loaded: {model_path}")
+                print("Loading model:", p)
+                model = tf.keras.models.load_model(p)
+                print("Loaded model:", p)
                 return model
             except Exception as e:
-                print(f"Failed to load {model_path}: {e}")
-                continue
-
-    print("No valid model found")
+                print("Failed to load model", p, ":", e)
+    print("No model found among:", MODEL_CANDIDATES)
     return None
 
 
@@ -530,33 +545,6 @@ def is_blank_image(img, mode="soft", debug=False, debug_name="debug"):
         print(f"[DEBUG] 黒比率: {black_ratio:.4f} / 閾値: {threshold}")
 
     return black_ratio <= threshold #--- 画像内の黒ピクセルの割合が閾値以下の場合にTrueを返すということ
-
-
-
-
-# -----モデル入力用に 28x28 -> (1,28,28,1) の numpy 配列にする
-def preprocess_for_model(pil_img, invert=True, debug_name="", seq_no=None):
-    img = pil_img.convert("L")
-    if invert:
-        img = ImageOps.invert(img)  # postproc の画像を黒白反転させる
-
-    # パディングして正方形化（余白に黒背景を追加）
-    w, h = img.size
-    side = max(w, h)
-    padded = Image.new("L", (side, side), 0)  # 黒背景
-    padded.paste(img, ((side - w) // 2, (side - h) // 2))
-
-    img = padded.resize((28, 28), Image.Resampling.LANCZOS)
-
-    # デバッグ保存
-    if debug_name is not None:
-        ensure_dir("debug_inputs")
-        suffix = f"_p{seq_no}" if seq_no is not None else ""
-        img.save(f"debug_inputs/{debug_name}{suffix}_.png")
-
-    arr = np.array(img).astype("float32") / 255.0
-    arr = arr.reshape(1, 28, 28, 1)
-    return arr
 
 
 def is_near_large_contour(small_contour, all_contours, keep_flags, distance_threshold=20):
@@ -776,8 +764,7 @@ def convert_service_value(raw_value):
 def ocr_etc_with_fallback(pil_img, model=None, debug_name=""):
     """時刻以外の数字欄OCR → モデルのみ"""
 
-    #pil_img = remove_lines(pil_img, debug=False, debug_name=f"{debug_name}_for_ocr")
-    #ここに書いてもdebugフォルダは作成されない。
+    pil_img = remove_lines(pil_img, debug=False, debug_name=f"{debug_name}_for_ocr")
     
     if model is not None:
         val = predict_digits_with_model(model, pil_img, debug_name=debug_name)
