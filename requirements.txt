@@ -19,3 +19,4 @@ pandas
 frontend
 tools
 opencv-python
+tensorflow
